@@ -92,6 +92,9 @@
 </div>
 
 <script>
+let board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+
+
 let highScore = parseInt(localStorage.getItem("highScore")) || 0;
 let highLines = parseInt(localStorage.getItem("highLines")) || 0;
 
@@ -298,47 +301,27 @@ function gameLoop() {
 }
 
 function draw() {
-    // Clear board HTML
-    boardElem.innerHTML = "";
+    boardElem.innerHTML = ""; // clear everything first
 
-    // Create each cell
-    for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-            const cell = document.createElement("div");
-            cell.className = "cell";
+    // Temporary board to include the falling piece
+    let tempBoard = board.map(row => [...row]); // deep copy
 
-            // Draw background color: either empty or filled
-            if (board[r][c] !== 0) {
-                cell.style.background = board[r][c]; // filled block color
-            } else {
-                cell.style.background = "#FFFFFF"; // empty
-            }
-
-            boardElem.appendChild(cell);
-        }
-    }
-
-    // Draw current falling piece
-    const s = current?.shape;
-    if (!s) return;
-
-    for (let r = 0; r < s.length; r++) {
-        for (let c = 0; c < s[0].length; c++) {
-            if (s[r][c] === 1) {
-                const br = current.r + r;
-                const bc = current.c + c;
-
-                if (br >= 0 && br < ROWS && bc >= 0 && bc < COLS) {
-                    const index = br * COLS + bc;
-                    boardElem.children[index].style.background = current.color;
+    // Draw current piece into tempBoard
+    if (current && current.shape) {
+        for (let r = 0; r < current.shape.length; r++) {
+            for (let c = 0; c < current.shape[0].length; c++) {
+                if (current.shape[r][c] === 1) {
+                    const br = current.r + r;
+                    const bc = current.c + c;
+                    if (br >= 0 && br < ROWS && bc >= 0 && bc < COLS) {
+                        tempBoard[br][bc] = current.color;
+                    }
                 }
             }
         }
     }
-}
 
-    // render
-    boardElem.innerHTML = "";
+    // Render the cells
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
             const cell = document.createElement("div");
@@ -348,7 +331,6 @@ function draw() {
         }
     }
 }
-
 // ---------------------
 // Controls
 // ---------------------
@@ -370,5 +352,6 @@ draw();
 </script>
 </body>
 </html>
+
 
 
