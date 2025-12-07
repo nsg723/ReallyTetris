@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Retro Tetris</title>
+
+<style>
+    body {
+        background: #C0C0C0;
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        overflow: hidden; /* still blocks arrow-key scrolling */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh; /* center the game properly */
+    }
+
+    #game-container {
+        width: 500px;
+        max-width: 95vw;  /* shrink on small screens */
+        transform: scale(1);
+        transform-origin: top center;
+        border: 3px solid #000;
+        background: #E0E0E0;
+    }
+
+    /* Auto-scale if screen is too small */
+    @media (max-height: 720px) {
+        #game-container {
+            transform: scale(0.85);
+        }
+    }
+
+    @media (max-height: 620px) {
+        #game-container {
+            transform: scale(0.75);
+        }
+    }
+
+    @media (max-height: 540px) {
+        #game-container {
+            transform: scale(0.65);
+        }
+    }
+
+    @media (max-height: 470px) {
+        #game-container {
+            transform: scale(0.55);
+        }
+    }
+
+    #title {
+        background: linear-gradient(#FFFFFF, #DDDDDD);
+        color: black;
+        font-weight: bold;
+        text-align: center;
+        padding: 10px;
+        border-bottom: 3px solid black;
+        font-size: 20px;
+    }
+
+    #board {
+        width: 300px;
+        height: 600px;
+        border: 3px solid black;
+        margin: 15px auto;
+        background: #FFFFFF;
+        image-rendering: pixelated;
+    }
+
+    .cell {
+        width: 30px;
+        height: 30px;
+        float: left;
+        border: 1px solid #999;
+        box-sizing: border-box;
+    }
+</style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="title">RETRO TETRIS — 900+ PIECES</div>
+    <div id="board"></div>
+</div>
+
+<script>
+// ---------------------
+// Prevent arrow scrolling
+// ---------------------
+window.addEventListener("keydown", function(e) {
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.code)) {
+        e.preventDefault();
+    }
+}, { passive: false });
+
+
+// ---------------------
+// Board Setup
+// ---------------------
+const COLS = 10;
+const ROWS = 20;
+
+const boardElem = document.getElementById("board");
+
+let board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+
+function createBoardHTML() {
+    boardElem.innerHTML = "";
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            const cell = document.createElement("div");
+            cell.className = "cell";
+            if (board[r][c] !== 0) {
+                cell.style.background = board[r][c];
+            } else {
+                cell.style.background = "#FFFFFF";
+            }
+            boardElem.appendChild(cell);
+        }
+    }
+}
+
+// ---------------------
+// Generate 900+ pieces
+// ---------------------
+function generateCrazyPiece() {
+    // Sizes allowed: 2x2, 2x3, 3x2, 3x3
+    const sizes = [
+        [2, 2], [2, 3], [3, 2], [3, 3]
+    ];
+
+    const [h, w] = sizes[Math.floor(Math.random() * sizes.length)];
+
+    let shape = [];
+    for (let r = 0; r < h; r++) {
+        let row = [];
+        for (let c = 0; c < w; c++) {
+            row.push(Math.random() < 0.5 ? 1 : 0);
+        }
+        shape.push(row);
+    }
+
+    // Ensure not empty
+    if (shape.flat().every(v => v === 0)) {
+        shape[Math.floor(Math.random()*h)][Math.floor(Math.random()*w)] = 1;
+    }
+
+    const colors = ["#FF0000","#00AAFF","#00CC00","#FF00FF","#FFA500","#7700FF","#009999"];
+    return {
+        shape,
+        color: colors[Math.floor(Math.random() * colors.length)]
+    };
+}
+
+// ---------------------
+// Piece movement logic
+// ---------------------
+let current = spawnPiece();
+
+function spawnPiece() {
+    return {
+        ...generateCrazyPiece(),
+        r: 0,
+        c: 3
+    };
+}
+
+function rotate(piece) {
+    const s = piece.shape;
+    const rotated = s[0].map((_, c) => s.map(row => row[c]).reverse());
+    return rotated;
+}
+
+function canMove(piece, dr, dc, newShape = null) {
+    const shape = newShape || piece.shape;
+    for (let r = 0; r < shape.length; r++) {
+        for (let c = 0; c < shape[0].length; c++) {
+            if (shape[r][c] === 1) {
+                let nr = piece.r + r + dr;
+                let nc = piece.c + c + dc;
+
+                if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) return false;
+                if (board[nr][nc] !== 0) return false;
+            }
+        }
+    }
+    return true;
+}
+
+function mergePiece(piece) {
+    for (let r = 0; r < piece.shape.length; r++) {
+        for (let c = 0; c < piece.shape[0].length; c++) {
+            if (piece.shape[r][c] === 1) {
+                board[piece.r + r][piece.c + c] = piece.color;
+            }
+        }
+    }
+}
+
+function clearLines() {
+    board = board.filter(row => row.some(cell => cell === 0));
+    while (board.length < ROWS) {
+        board.unshift(Array(COLS).fill(0));
+    }
+}
+
+function gameLoop() {
+    if (canMove(current, 1, 0)) {
+        current.r++;
+    } else {
+        mergePiece(current);
+        clearLines();
+        current = spawnPiece();
+    }
+    draw();
+}
+
+function draw() {
+    let tempBoard = board.map(r => [...r]);
+    const s = current.shape;
+
+    for (let r = 0; r < s.length; r++) {
+        for (let c = 0; c < s[0].length; c++) {
+            if (s[r][c] === 1) {
+                const br = current.r + r;
+                const bc = current.c + c;
+
+                if (br >= 0 && br < ROWS && bc >= 0 && bc < COLS) {
+                    tempBoard[br][bc] = current.color;
+                }
+            }
+        }
+    }
+
+    // render
+    boardElem.innerHTML = "";
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            const cell = document.createElement("div");
+            cell.className = "cell";
+            cell.style.background = tempBoard[r][c] === 0 ? "#FFFFFF" : tempBoard[r][c];
+            boardElem.appendChild(cell);
+        }
+    }
+}
+
+// ---------------------
+// Controls
+// ---------------------
+document.addEventListener("keydown", e => {
+    if (e.code === "ArrowLeft" && canMove(current, 0, -1)) current.c--;
+    if (e.code === "ArrowRight" && canMove(current, 0, 1)) current.c++;
+    if (e.code === "ArrowDown" && canMove(current, 1, 0)) current.r++;
+    if (e.code === "ArrowUp") {
+        const rotated = rotate(current);
+        if (canMove(current, 0, 0, rotated)) current.shape = rotated;
+    }
+    draw();
+});
+
+setInterval(gameLoop, 500);
+createBoardHTML();
+draw();
+</script>
+</body>
+</html>
