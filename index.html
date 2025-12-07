@@ -85,10 +85,20 @@
     <div id="board"></div>
     <div id="stats" style="text-align:center; margin-top:10px;">
     Score: <span id="score">0</span> | Lines: <span id="lines">0</span>
+    <div id="high-stats" style="text-align:center; margin-top:5px;">
+    High Score: <span id="high-score">0</span> | High Lines: <span id="high-lines">0</span>
+    </div>
 </div>
 </div>
 
 <script>
+let highScore = parseInt(localStorage.getItem("highScore")) || 0;
+let highLines = parseInt(localStorage.getItem("highLines")) || 0;
+
+// Display them initially
+document.getElementById("high-score").textContent = highScore;
+document.getElementById("high-lines").textContent = highLines;
+
 let gameOver = false;
 let score = 0;
 let linesCleared = 0;
@@ -182,19 +192,27 @@ function generateCrazyPiece() {
 // ---------------------
 let current = spawnPiece();
 
-function spawnPiece() {
-    const newPiece = generateCrazyPiece();
-    newPiece.r = 0; // top row
-    newPiece.c = Math.floor((COLS - newPiece.shape[0].length) / 2);
-
-    // Check if new piece fits
-    if (!canMove(newPiece, 0, 0)) {
-        gameOver = true;
-        alert("GAME OVER!");
-        return null;
+if (!canMove(newPiece, 0, 0)) {
+    gameOver = true;
+    
+    // Update high score if needed
+    if (score > highScore) {
+        highScore = score;
+        localStorage.setItem("highScore", highScore);
+    }
+    
+    // Update high lines if needed
+    if (linesCleared > highLines) {
+        highLines = linesCleared;
+        localStorage.setItem("highLines", highLines);
     }
 
-    return newPiece;
+    // Update HTML
+    document.getElementById("high-score").textContent = highScore;
+    document.getElementById("high-lines").textContent = highLines;
+
+    alert("GAME OVER!");
+    return null;
 }
 
 function rotate(piece) {
@@ -328,3 +346,4 @@ draw();
 </script>
 </body>
 </html>
+
