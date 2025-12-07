@@ -126,51 +126,46 @@ function createBoardHTML() {
 // Generate 900+ pieces
 // ---------------------
 function generateCrazyPiece() {
-    // Allowed sizes
     const sizes = [
         [2, 2], [2, 3], [3, 2], [3, 3]
     ];
     const [h, w] = sizes[Math.floor(Math.random() * sizes.length)];
 
-    // Number of blocks = random but at least 2
+    // Max number of blocks = random between 2 and total cells
     const maxBlocks = h * w;
     const blockCount = Math.floor(Math.random() * (maxBlocks - 1)) + 2;
 
-    // Create empty grid
+    // Initialize empty grid
     let shape = Array.from({ length: h }, () => Array(w).fill(0));
 
-    // List of filled coordinates (for controlled expansion)
-    let cells = [];
+    // Start position
+    let r = Math.floor(Math.random() * h);
+    let c = Math.floor(Math.random() * w);
+    shape[r][c] = 1;
 
-    // Pick a random starting point
-    let sr = Math.floor(Math.random() * h);
-    let sc = Math.floor(Math.random() * w);
-    shape[sr][sc] = 1;
-    cells.push([sr, sc]);
+    // List of frontier cells (for linear growth)
+    let frontier = [[r, c]];
 
-    // Expand connectivity
-    while (cells.length < blockCount) {
-        // Choose a random existing filled cell
-        const [cr, cc] = cells[Math.floor(Math.random() * cells.length)];
+    while (frontier.length > 0 && shape.flat().reduce((a,b)=>a+b,0) < blockCount) {
+        // Take the last cell to ensure compact growth
+        const [cr, cc] = frontier.pop();
 
-        // Choose a random direction (4-way)
-        const dirs = [
-            [1, 0], [-1, 0], [0, 1], [0, -1]
-        ];
-        const [dr, dc] = dirs[Math.floor(Math.random() * dirs.length)];
+        // Shuffle directions
+        const dirs = [[1,0],[-1,0],[0,1],[0,-1]].sort(()=>Math.random()-0.5);
 
-        const nr = cr + dr;
-        const nc = cc + dc;
+        for (const [dr, dc] of dirs) {
+            const nr = cr + dr;
+            const nc = cc + dc;
 
-        // Block stays inside bounds and must be empty
-        if (nr >= 0 && nr < h && nc >= 0 && nc < w && shape[nr][nc] === 0) {
-            shape[nr][nc] = 1;
-            cells.push([nr, nc]);
+            if (nr >= 0 && nr < h && nc >=0 && nc < w && shape[nr][nc] === 0) {
+                shape[nr][nc] = 1;
+                frontier.push([nr,nc]);
+                break; // only one step at a time → keeps shape thin
+            }
         }
     }
 
     const colors = ["#FF0000", "#00AAFF", "#00CC00", "#FF00FF", "#FFA500", "#7700FF", "#009999"];
-
     return {
         shape,
         color: colors[Math.floor(Math.random() * colors.length)]
@@ -288,4 +283,5 @@ draw();
 </script>
 </body>
 </html>
+
 
