@@ -1,401 +1,343 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>Really Tetris — Fixed</title>
-
+<title>Retro Tetris 900</title>
 <style>
     body {
-        background: #C0C0C0;
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-
-        /* Horizontal centering only */
-        display: flex;
-        justify-content: center;
-
-        /* Put it at the top, no vertical centering */
-        align-items: flex-start;
-        height: 100vh;
+        background:#e0e0e0;
+        margin:0;
+        font-family:"Verdana", sans-serif;
+        overflow:hidden;
     }
-
-    #game-container {
-        width: 500px;
-        max-width: 95vw;
-        margin-top: 0;
-        transform: scale(1);
-        transform-origin: top center;
-        border: 3px solid #000;
-        background: #E0E0E0;
-    }
-
-    /* Auto-scale based on height */
-    @media (max-height: 720px) { #game-container { transform: scale(0.9); } }
-    @media (max-height: 650px) { #game-container { transform: scale(0.8); } }
-    @media (max-height: 580px) { #game-container { transform: scale(0.7); } }
-    @media (max-height: 500px) { #game-container { transform: scale(0.6); } }
-
-    #title {
-        background: linear-gradient(#FFFFFF, #DDDDDD);
-        color: black;
-        font-weight: bold;
-        text-align: center;
-        padding: 10px;
-        border-bottom: 3px solid black;
-        font-size: 20px;
-    }
-
-    #board {
-        width: 300px;   /* 10 cols * 30px */
-        height: 600px;  /* 20 rows * 30px */
-        border: 3px solid black;
-        margin: 15px auto;
-        background: #FFFFFF;
+    #gamebox {
+        width:360px;
+        margin:20px auto;
+        padding:10px;
+        border:3px solid #000;
+        background:#c0c0c0; 
+        box-shadow:none;
         image-rendering: pixelated;
-        box-sizing: content-box;
     }
-
-    .cell {
-        width: 30px;
-        height: 30px;
-        float: left;
-        border: 1px solid #999;
-        box-sizing: border-box;
+    #stats, #highstats {
+        text-align:center;
+        font-size:14px;
+        margin:5px 0;
     }
-
-    #stats { text-align:center; margin-top:10px; padding-bottom:12px; }
-    #high-stats { text-align:center; margin-top:5px; }
-    .game-over {
-      text-align:center;
-      padding:8px 0;
-      color:#900;
-      font-weight:bold;
+    canvas {
+        display:block;
+        background:#ffffff;
+        border:3px solid #000;
+        margin:0 auto;
     }
 </style>
 </head>
 <body>
 
-<div id="game-container">
-    <div id="title">REALLY TETRIS</div>
-    <div id="board" aria-label="tetris board"></div>
-
-    <div id="stats">
-      Score: <span id="score">0</span> | Lines: <span id="lines">0</span>
-      <div id="high-stats">
-        High Score: <span id="high-score">0</span> | High Lines: <span id="high-lines">0</span>
-      </div>
-      <div id="gameoverText" class="game-over" style="display:none;">GAME OVER — Press R to Restart</div>
-    </div>
+<div id="gamebox">
+    <div id="stats">Score: <span id="score">0</span> | Lines: <span id="lines">0</span></div>
+    <div id="highstats">High Score: <span id="highscore">0</span> | High Lines: <span id="highlines">0</span></div>
+    <canvas id="game" width="300" height="600"></canvas>
 </div>
 
 <script>
-// CONFIG
+/* ==========================
+    BASIC SETUP
+========================== */
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
 const COLS = 10;
 const ROWS = 20;
-const CELL_PX = 30; // used for visual cell size (CSS already set)
+const SIZE = 30;
 
-// DOM
-const boardElem = document.getElementById('board');
-const scoreEl = document.getElementById('score');
-const linesEl = document.getElementById('lines');
-const highScoreEl = document.getElementById('high-score');
-const highLinesEl = document.getElementById('high-lines');
-const gameoverText = document.getElementById('gameoverText');
-
-// STATE
-let board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
-let current = null;
-let gameOver = false;
+let board = [];
 let score = 0;
-let linesCleared = 0;
+let lines = 0;
 
-// Load highs
 let highScore = parseInt(localStorage.getItem("highScore")) || 0;
 let highLines = parseInt(localStorage.getItem("highLines")) || 0;
-highScoreEl.textContent = highScore;
-highLinesEl.textContent = highLines;
 
-// Prevent arrow scrolling
-window.addEventListener("keydown", function(e) {
-    if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space"," "].includes(e.code || e.key)) {
-        e.preventDefault();
+document.getElementById("highscore").textContent = highScore;
+document.getElementById("highlines").textContent = highLines;
+
+/* ==========================
+    BUILD EMPTY BOARD
+========================== */
+function resetBoard() {
+    board = [];
+    for (let r = 0; r < ROWS; r++) {
+        board.push(new Array(COLS).fill(0));
     }
-}, { passive: false });
+}
+resetBoard();
 
-// -----------------------------
-// Piece generator (compact random walk, 4-way connectivity)
-// -----------------------------
-function generatePiece() {
-    const sizes = [[2,2],[2,3],[3,2],[3,3]];
-    const [h, w] = sizes[Math.floor(Math.random() * sizes.length)];
+/* ==========================
+    DRAWING
+========================== */
+function drawBoard() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // desired blocks: at least 2, up to h*w
-    const maxBlocks = h * w;
-    const blockCount = Math.floor(Math.random() * (maxBlocks - 1)) + 2;
+    // grid lines (retro, black, thin)
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 1;
 
-    // empty grid
-    const shape = Array.from({ length: h }, () => Array(w).fill(0));
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
 
-    // start at random cell
-    let r = Math.floor(Math.random() * h);
-    let c = Math.floor(Math.random() * w);
-    shape[r][c] = 1;
+            ctx.fillStyle = board[r][c] ? "#333" : "#fff";
+            ctx.fillRect(c * SIZE, r * SIZE, SIZE, SIZE);
 
-    // frontier is a stack so growth stays compact (thin)
-    const frontier = [[r,c]];
+            ctx.strokeRect(c * SIZE, r * SIZE, SIZE, SIZE);
+        }
+    }
+}
 
-    while (shape.flat().reduce((a,b)=>a+b,0) < blockCount && frontier.length) {
-        const [cr, cc] = frontier.pop();
-        const dirs = [[1,0],[-1,0],[0,1],[0,-1]].sort(()=>Math.random()-0.5);
-        for (const [dr, dc] of dirs) {
-            const nr = cr + dr;
-            const nc = cc + dc;
-            if (nr >=0 && nr < h && nc >=0 && nc < w && shape[nr][nc] === 0) {
+/* ==========================
+   RANDOM POLYOMINO GENERATOR
+   (Short-connection shapes)
+========================== */
+
+function generateRandomPiece() {
+    const w = Math.floor(Math.random() * 2) + 2; // 2 or 3
+    const h = Math.floor(Math.random() * 2) + 2;
+
+    // BFS polyomino builder (prefers short connections)
+    let shape = Array.from({ length: h }, () => Array(w).fill(0));
+    let cells = [{ r: 0, c: 0 }];
+    shape[0][0] = 1;
+
+    let target = Math.floor(w * h * 0.45) + 1;
+
+    while (cells.length < target) {
+        let pick = cells[Math.floor(Math.random() * cells.length)];
+        let dirs = [
+            { r: 1, c: 0 },
+            { r: -1, c: 0 },
+            { r: 0, c: 1 },
+            { r: 0, c: -1 }
+        ];
+
+        dirs = dirs.sort(() => Math.random() - 0.5);
+
+        for (let d of dirs) {
+            let nr = pick.r + d.r;
+            let nc = pick.c + d.c;
+
+            if (nr >= 0 && nr < h && nc >= 0 && nc < w && shape[nr][nc] === 0) {
                 shape[nr][nc] = 1;
-                frontier.push([nr,nc]);
-                break; // only one step from this cell -> keeps shape thin
+                cells.push({ r: nr, c: nc });
+                break;
             }
         }
     }
 
-    const colors = ["#FF0000","#00AAFF","#00CC00","#FF00FF","#FFA500","#7700FF","#009999"];
-    return { shape, color: colors[Math.floor(Math.random()*colors.length)] };
+    return {
+        shape,
+        x: 3,
+        y: 0
+    };
 }
 
-// rotate matrix 90deg clockwise
-function rotateShape(shape) {
-    const h = shape.length, w = shape[0].length;
-    const out = Array.from({ length: w }, () => Array(h).fill(0));
-    for (let y=0;y<h;y++){
-        for (let x=0;x<w;x++){
-            out[x][h-1-y] = shape[y][x];
-        }
-    }
-    return out;
-}
+let current = generateRandomPiece();
 
-// -----------------------------
-// Collision and placement
-// -----------------------------
-function canPlace(piece, rr, cc, shapeOverride = null) {
-    const shape = shapeOverride || piece.shape;
-    for (let r=0;r<shape.length;r++){
-        for (let c=0;c<shape[0].length;c++){
-            if (shape[r][c] === 1) {
-                const br = rr + r;
-                const bc = cc + c;
-                // out of horizontal bounds or below bottom = cannot
-                if (bc < 0 || bc >= COLS) return false;
-                if (br >= ROWS) return false;
-                // if within visible board and collides with filled cell
-                if (br >= 0 && board[br][bc]) return false;
+/* ==========================
+    MOVEMENT CHECKS
+========================== */
+function canMove(p, dx, dy) {
+    for (let r = 0; r < p.shape.length; r++) {
+        for (let c = 0; c < p.shape[0].length; c++) {
+            if (p.shape[r][c] === 1) {
+                let nr = p.y + r + dy;
+                let nc = p.x + c + dx;
+
+                if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) return false;
+                if (board[nr][nc]) return false;
             }
         }
     }
     return true;
 }
 
-function mergePiece(piece) {
-    let landedBlocks = 0;
-    for (let r=0;r<piece.shape.length;r++){
-        for (let c=0;c<piece.shape[0].length;c++){
-            if (piece.shape[r][c] === 1) {
-                const br = piece.r + r;
-                const bc = piece.c + c;
-                if (br >= 0 && br < ROWS && bc >=0 && bc < COLS) {
-                    board[br][bc] = piece.color;
-                    landedBlocks++;
-                }
+/* ==========================
+    FREEZE + SPAWN
+========================== */
+function freezePiece() {
+    for (let r = 0; r < current.shape.length; r++) {
+        for (let c = 0; c < current.shape[0].length; c++) {
+            if (current.shape[r][c] === 1) {
+                board[current.y + r][current.x + c] = 1;
             }
         }
     }
-    score += landedBlocks; // points for blocks landed
-    updateStats();
+
+    score++;
+    updateScore();
 }
 
+function spawnPiece() {
+    current = generateRandomPiece();
+
+    if (!canMove(current, 0, 0)) {
+        gameOver();
+    }
+}
+
+/* ==========================
+    CLEAR LINES
+========================== */
 function clearLines() {
     let cleared = 0;
-    for (let y = ROWS-1; y >= 0; y--) {
-        if (board[y].every(cell => cell !== 0)) {
-            cleared++;
-            board.splice(y, 1);
+
+    for (let r = ROWS - 1; r >= 0; r--) {
+        if (board[r].every(v => v === 1)) {
+            board.splice(r, 1);
             board.unshift(new Array(COLS).fill(0));
-            y++; // recheck same index after shift
+            cleared++;
+            r++;
         }
     }
+
     if (cleared > 0) {
-        linesCleared += cleared;
-        // line clear bonus (adjustable)
-        const pointsForLines = {1:40, 2:100, 3:300, 4:1200};
-        score += (pointsForLines[cleared] || (cleared * 100));
-        updateStats();
+        lines += cleared;
+        score += cleared * 5;
+        updateScore();
     }
 }
 
-function updateStats() {
-    scoreEl.textContent = score;
-    linesEl.textContent = linesCleared;
-}
+/* ==========================
+    UPDATE SCORE + LOCALSTORAGE
+========================== */
+function updateScore() {
+    document.getElementById("score").textContent = score;
+    document.getElementById("lines").textContent = lines;
 
-// -----------------------------
-// Spawning & game-over
-// -----------------------------
-function spawnPiece() {
-    const p = generatePiece();
-    // position horizontally centered
-    p.c = Math.floor((COLS - p.shape[0].length) / 2);
-    // position above the visible area so taller shapes can enter
-    p.r = -p.shape.length;
+    let improved = false;
 
-    // If it can't be placed at spawn (overlaps existing visible blocks) -> game over
-    if (!canPlace(p, p.r, p.c)) {
-        onGameOver();
-        return null;
-    }
-    return p;
-}
-
-function onGameOver(){
-    gameOver = true;
-    gameoverText.style.display = 'block';
-    // update highs
     if (score > highScore) {
         highScore = score;
         localStorage.setItem("highScore", highScore);
-        highScoreEl.textContent = highScore;
+        improved = true;
     }
-    if (linesCleared > highLines) {
-        highLines = linesCleared;
+
+    if (lines > highLines) {
+        highLines = lines;
         localStorage.setItem("highLines", highLines);
-        highLinesEl.textContent = highLines;
+        improved = true;
+    }
+
+    if (improved) {
+        document.getElementById("highscore").textContent = highScore;
+        document.getElementById("highlines").textContent = highLines;
     }
 }
 
-// -----------------------------
-// Controls
-// -----------------------------
-document.addEventListener('keydown', (e) => {
-    if (gameOver) {
-        if (e.key.toLowerCase() === 'r') restartGame();
-        return;
-    }
-    if (!current) return;
-    if (e.code === "ArrowLeft" && canPlace(current, current.r, current.c - 1)) {
-        current.c--;
-    } else if (e.code === "ArrowRight" && canPlace(current, current.r, current.c + 1)) {
-        current.c++;
-    } else if (e.code === "ArrowDown" && canPlace(current, current.r + 1, current.c)) {
-        current.r++;
-    } else if (e.code === "ArrowUp") {
-        const rotated = rotateShape(current.shape);
-        // try simple wallkick offsets: 0, -1, +1
-        const offsets = [0, -1, 1];
-        for (const off of offsets) {
-            if (canPlace(current, current.r, current.c + off, rotated)) {
-                current.shape = rotated;
-                current.c += off;
-                break;
-            }
-        }
-    }
-    draw();
-});
+/* ==========================
+    GAME OVER
+========================== */
+function gameOver() {
+    alert("GAME OVER!");
 
-// Hard drop with space
-document.addEventListener('keydown', (e) => {
-    if (gameOver) return;
-    if (e.code === "Space" || e.key === " ") {
-        // drop until cannot
-        while (current && canPlace(current, current.r + 1, current.c)) {
-            current.r++;
-        }
-        // then lock
-        if (current) {
-            mergePiece(current);
-            clearLines();
-            current = spawnPiece();
-        }
-        draw();
-    }
-});
-
-// -----------------------------
-// Game loop (simple interval)
-// -----------------------------
-let gravityMs = 500;
-let gravityTimer = null;
-
-function startLoop() {
-    if (gravityTimer) clearInterval(gravityTimer);
-    gravityTimer = setInterval(() => {
-        if (gameOver || !current) return;
-        if (canPlace(current, current.r + 1, current.c)) {
-            current.r++;
-        } else {
-            mergePiece(current);
-            clearLines();
-            current = spawnPiece();
-        }
-        draw();
-    }, gravityMs);
-}
-
-// -----------------------------
-// Drawing
-// -----------------------------
-function draw() {
-    // clear container and redraw cells
-    boardElem.innerHTML = '';
-    // temp board includes falling piece
-    const temp = board.map(r => r.slice());
-    if (current && current.shape) {
-        for (let r=0;r<current.shape.length;r++){
-            for (let c=0;c<current.shape[0].length;c++){
-                if (current.shape[r][c] === 1) {
-                    const br = current.r + r;
-                    const bc = current.c + c;
-                    if (br >= 0 && br < ROWS && bc >= 0 && bc < COLS) {
-                        temp[br][bc] = current.color;
-                    }
-                }
-            }
-        }
-    }
-
-    for (let r=0;r<ROWS;r++){
-        for (let c=0;c<COLS;c++){
-            const cell = document.createElement('div');
-            cell.className = 'cell';
-            cell.style.background = temp[r][c] === 0 ? '#FFFFFF' : temp[r][c];
-            boardElem.appendChild(cell);
-        }
-    }
-}
-
-// -----------------------------
-// Restart
-// -----------------------------
-function restartGame() {
-    board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
-    current = null;
-    gameOver = false;
     score = 0;
-    linesCleared = 0;
-    updateStats();
-    gameoverText.style.display = 'none';
-    current = spawnPiece();
-    draw();
+    lines = 0;
+    document.getElementById("score").textContent = 0;
+    document.getElementById("lines").textContent = 0;
+
+    resetBoard();
+    spawnPiece();
 }
 
-// -----------------------------
-// Init
-// -----------------------------
-current = spawnPiece();
-draw();
-startLoop();
+/* ==========================
+    GAME LOOP
+========================== */
+let dropCounter = 0;
+let dropSpeed = 25;
 
+function update() {
+    dropCounter++;
+    if (dropCounter >= dropSpeed) {
+        dropCounter = 0;
+
+        if (canMove(current, 0, 1)) {
+            current.y++;
+        } else {
+            freezePiece();
+            clearLines();
+            spawnPiece();
+        }
+    }
+
+    drawBoard();
+    drawPiece();
+    requestAnimationFrame(update);
+}
+
+/* ==========================
+    DRAW CURRENT PIECE
+========================== */
+function drawPiece() {
+    ctx.fillStyle = "#000";
+
+    for (let r = 0; r < current.shape.length; r++) {
+        for (let c = 0; c < current.shape[0].length; c++) {
+            if (current.shape[r][c] === 1) {
+                ctx.fillRect((current.x + c) * SIZE, (current.y + r) * SIZE, SIZE, SIZE);
+                ctx.strokeRect((current.x + c) * SIZE, (current.y + r) * SIZE, SIZE, SIZE);
+            }
+        }
+    }
+}
+
+/* ==========================
+    KEYBOARD
+========================== */
+document.addEventListener("keydown", (e) => {
+    if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) {
+        e.preventDefault(); // no scrolling
+    }
+
+    switch (e.key) {
+        case "ArrowLeft":
+            if (canMove(current, -1, 0)) current.x--;
+            break;
+        case "ArrowRight":
+            if (canMove(current, 1, 0)) current.x++;
+            break;
+        case "ArrowDown":
+            if (canMove(current, 0, 1)) current.y++;
+            break;
+        case "ArrowUp":
+            rotate(current);
+            break;
+    }
+});
+
+/* ==========================
+    ROTATION (simple)
+========================== */
+function rotate(p) {
+    let rotated = [];
+    for (let c = 0; c < p.shape[0].length; c++) {
+        let row = [];
+        for (let r = p.shape.length - 1; r >= 0; r--) {
+            row.push(p.shape[r][c]);
+        }
+        rotated.push(row);
+    }
+
+    let old = p.shape;
+    p.shape = rotated;
+
+    if (!canMove(p, 0, 0)) {
+        p.shape = old; // undo
+    }
+}
+
+/* ==========================
+    START
+========================== */
+spawnPiece();
+update();
 </script>
+
 </body>
 </html>
