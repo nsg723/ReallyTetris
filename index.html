@@ -84,11 +84,14 @@
     <div id="title">REALLY TETRIS</div>
     <div id="board"></div>
     <div id="stats" style="text-align:center; margin-top:10px;">
-    Score: <span id="score">0</span> | Lines: <span id="lines">0</span>
+    Score: <span id="score">0</span> | Lines: <span id="lines">0</span> | Level: <span id="level">1</span>
 </div>
 </div>
 
 <script>
+let level = 1;
+let linesCleared = 0; // already exists
+let dropInterval = 500; // milliseconds between automatic drops
 let gameOver = false;
 let score = 0;
 let linesCleared = 0;
@@ -257,27 +260,47 @@ function clearLines() {
         linesCleared += cleared;
 
         // Extra points per cleared line
-        score += cleared * 10; // for example, 10 points per line
+        score += cleared * 10; // each line gives 10 points
+
+        // Level up: e.g., every 10 lines = new level
+        let newLevel = Math.floor(linesCleared / 10) + 1;
+        if (newLevel > level) {
+            level = newLevel;
+            dropInterval = Math.max(100, 500 - (level - 1) * 50); 
+            // minimum speed 100ms, faster with higher level
+        }
     }
 
     // Update HTML stats
     document.getElementById('score').textContent = score;
     document.getElementById('lines').textContent = linesCleared;
+    document.getElementById('level').textContent = level;
 }
+
+let lastDrop = Date.now();
 
 function gameLoop() {
     if (gameOver) return;
 
-    if (canMove(current, 1, 0)) {
-        current.r++;
-    } else {
-        mergePiece(current);   // adds points for landed piece
-        clearLines();          // adds points for cleared lines
-        current = spawnPiece();
-        if (!current) return; // game over
+    const now = Date.now();
+    if (now - lastDrop >= dropInterval) {
+        if (canMove(current, 1, 0)) {
+            current.r++;
+        } else {
+            mergePiece(current);
+            clearLines();
+            current = spawnPiece();
+            if (!current) return; // game over
+        }
+        lastDrop = now;
     }
+
     draw();
+    requestAnimationFrame(gameLoop);
 }
+
+// Start game loop
+requestAnimationFrame(gameLoop);
 
 function draw() {
     let tempBoard = board.map(r => [...r]);
@@ -328,6 +351,7 @@ draw();
 </script>
 </body>
 </html>
+
 
 
 
