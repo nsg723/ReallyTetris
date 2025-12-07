@@ -81,11 +81,17 @@
 <body>
 
 <div id="game-container">
-    <div id="title">RETRO TETRIS — 900+ PIECES</div>
+    <div id="title">REALLY TETRIS</div>
     <div id="board"></div>
+    <div id="stats" style="text-align:center; margin-top:10px;">
+    Score: <span id="score">0</span> | Lines: <span id="lines">0</span>
+</div>
 </div>
 
 <script>
+let gameOver = false;
+let score = 0;
+let linesCleared = 0;
 // ---------------------
 // Prevent arrow scrolling
 // ---------------------
@@ -177,11 +183,18 @@ function generateCrazyPiece() {
 let current = spawnPiece();
 
 function spawnPiece() {
-    return {
-        ...generateCrazyPiece(),
-        r: 0,
-        c: 3
-    };
+    const newPiece = generateCrazyPiece();
+    newPiece.r = 0; // top row
+    newPiece.c = Math.floor((COLS - newPiece.shape[0].length) / 2);
+
+    // Check if new piece fits
+    if (!canMove(newPiece, 0, 0)) {
+        gameOver = true;
+        alert("GAME OVER!");
+        return null;
+    }
+
+    return newPiece;
 }
 
 function rotate(piece) {
@@ -207,29 +220,61 @@ function canMove(piece, dr, dc, newShape = null) {
 }
 
 function mergePiece(piece) {
+    let landedBlocks = 0;
     for (let r = 0; r < piece.shape.length; r++) {
         for (let c = 0; c < piece.shape[0].length; c++) {
             if (piece.shape[r][c] === 1) {
-                board[piece.r + r][piece.c + c] = piece.color;
+                const br = piece.r + r;
+                const bc = piece.c + c;
+                if (br >= 0 && br < ROWS && bc >= 0 && bc < COLS) {
+                    board[br][bc] = piece.color;
+                    landedBlocks++;
+                }
             }
         }
     }
+
+    // Add points for landing a piece
+    score += landedBlocks;
 }
 
 function clearLines() {
-    board = board.filter(row => row.some(cell => cell === 0));
+    let cleared = 0;
+    board = board.filter(row => {
+        if (row.every(cell => cell !== 0)) {
+            cleared++;
+            return false; // remove full line
+        }
+        return true;
+    });
+
+    // Add empty rows on top
     while (board.length < ROWS) {
         board.unshift(Array(COLS).fill(0));
     }
+
+    if (cleared > 0) {
+        linesCleared += cleared;
+
+        // Extra points per cleared line
+        score += cleared * 10; // for example, 10 points per line
+    }
+
+    // Update HTML stats
+    document.getElementById('score').textContent = score;
+    document.getElementById('lines').textContent = linesCleared;
 }
 
 function gameLoop() {
+    if (gameOver) return;
+
     if (canMove(current, 1, 0)) {
         current.r++;
     } else {
-        mergePiece(current);
-        clearLines();
+        mergePiece(current);   // adds points for landed piece
+        clearLines();          // adds points for cleared lines
         current = spawnPiece();
+        if (!current) return; // game over
     }
     draw();
 }
@@ -283,5 +328,6 @@ draw();
 </script>
 </body>
 </html>
+
 
 
