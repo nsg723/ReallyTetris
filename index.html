@@ -84,14 +84,11 @@
     <div id="title">REALLY TETRIS</div>
     <div id="board"></div>
     <div id="stats" style="text-align:center; margin-top:10px;">
-    Score: <span id="score">0</span> | Lines: <span id="lines">0</span> | Level: <span id="level">1</span>
+    Score: <span id="score">0</span> | Lines: <span id="lines">0</span>
 </div>
 </div>
 
 <script>
-let level = 1;
-let linesCleared = 0; // already exists
-let dropInterval = 500; // milliseconds between automatic drops
 let gameOver = false;
 let score = 0;
 let linesCleared = 0;
@@ -260,61 +257,38 @@ function clearLines() {
         linesCleared += cleared;
 
         // Extra points per cleared line
-        score += cleared * 10; // each line gives 10 points
-
-        // Level up: e.g., every 10 lines = new level
-        let newLevel = Math.floor(linesCleared / 10) + 1;
-        if (newLevel > level) {
-            level = newLevel;
-            dropInterval = Math.max(100, 500 - (level - 1) * 50); 
-            // minimum speed 100ms, faster with higher level
-        }
+        score += cleared * 10; // for example, 10 points per line
     }
 
     // Update HTML stats
     document.getElementById('score').textContent = score;
     document.getElementById('lines').textContent = linesCleared;
-    document.getElementById('level').textContent = level;
 }
-
-let lastDrop = Date.now();
 
 function gameLoop() {
     if (gameOver) return;
 
-    const now = Date.now();
-    if (now - lastDrop >= dropInterval) {
-        // Attempt to move piece down
-        if (canMove(current, 1, 0)) {
-            current.r++;
-        } else {
-            mergePiece(current);   // merge piece into board
-            clearLines();          // remove full lines, update score/level
-            current = spawnPiece();
-            if (!current) return;  // game over
-        }
-        lastDrop = now;
+    if (canMove(current, 1, 0)) {
+        current.r++;
+    } else {
+        mergePiece(current);   // adds points for landed piece
+        clearLines();          // adds points for cleared lines
+        current = spawnPiece();
+        if (!current) return; // game over
     }
-
-    // Always draw current state
     draw();
-
-    requestAnimationFrame(gameLoop);
 }
 
-// Start the loop
-requestAnimationFrame(gameLoop);
-
 function draw() {
-    let tempBoard = board.map(r => [...r]); // copy board for overlaying current piece
-
-    // Draw current piece on top of tempBoard
+    let tempBoard = board.map(r => [...r]);
     const s = current.shape;
+
     for (let r = 0; r < s.length; r++) {
         for (let c = 0; c < s[0].length; c++) {
             if (s[r][c] === 1) {
                 const br = current.r + r;
                 const bc = current.c + c;
+
                 if (br >= 0 && br < ROWS && bc >= 0 && bc < COLS) {
                     tempBoard[br][bc] = current.color;
                 }
@@ -322,17 +296,6 @@ function draw() {
         }
     }
 
-    // Render tempBoard
-    boardElem.innerHTML = "";
-    for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-            const cell = document.createElement("div");
-            cell.className = "cell";
-            cell.style.background = tempBoard[r][c] === 0 ? "#FFFFFF" : tempBoard[r][c];
-            boardElem.appendChild(cell);
-        }
-    }
-}
     // render
     boardElem.innerHTML = "";
     for (let r = 0; r < ROWS; r++) {
@@ -365,8 +328,3 @@ draw();
 </script>
 </body>
 </html>
-
-
-
-
-
