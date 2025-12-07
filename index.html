@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Really Tetris</title>
+<title>Really Tetris — Fixed</title>
 
 <style>
     body {
@@ -10,7 +10,7 @@
         font-family: Arial, sans-serif;
         margin: 0;
         padding: 0;
-        overflow: hidden; /* still blocks arrow-key scrolling */
+        overflow: hidden;
 
         /* Horizontal centering only */
         display: flex;
@@ -24,31 +24,18 @@
     #game-container {
         width: 500px;
         max-width: 95vw;
-
-        /* Start at exact top */
         margin-top: 0;
-
-        /* Scaling for small screens */
         transform: scale(1);
         transform-origin: top center;
-
         border: 3px solid #000;
         background: #E0E0E0;
     }
 
     /* Auto-scale based on height */
-    @media (max-height: 720px) {
-        #game-container { transform: scale(0.9); }
-    }
-    @media (max-height: 650px) {
-        #game-container { transform: scale(0.8); }
-    }
-    @media (max-height: 580px) {
-        #game-container { transform: scale(0.7); }
-    }
-    @media (max-height: 500px) {
-        #game-container { transform: scale(0.6); }
-    }
+    @media (max-height: 720px) { #game-container { transform: scale(0.9); } }
+    @media (max-height: 650px) { #game-container { transform: scale(0.8); } }
+    @media (max-height: 580px) { #game-container { transform: scale(0.7); } }
+    @media (max-height: 500px) { #game-container { transform: scale(0.6); } }
 
     #title {
         background: linear-gradient(#FFFFFF, #DDDDDD);
@@ -61,12 +48,13 @@
     }
 
     #board {
-        width: 300px;
-        height: 600px;
+        width: 300px;   /* 10 cols * 30px */
+        height: 600px;  /* 20 rows * 30px */
         border: 3px solid black;
         margin: 15px auto;
         background: #FFFFFF;
         image-rendering: pixelated;
+        box-sizing: content-box;
     }
 
     .cell {
@@ -76,164 +64,133 @@
         border: 1px solid #999;
         box-sizing: border-box;
     }
+
+    #stats { text-align:center; margin-top:10px; padding-bottom:12px; }
+    #high-stats { text-align:center; margin-top:5px; }
+    .game-over {
+      text-align:center;
+      padding:8px 0;
+      color:#900;
+      font-weight:bold;
+    }
 </style>
 </head>
 <body>
 
 <div id="game-container">
     <div id="title">REALLY TETRIS</div>
-    <div id="board"></div>
-    <div id="stats" style="text-align:center; margin-top:10px;">
-    Score: <span id="score">0</span> | Lines: <span id="lines">0</span>
-    <div id="high-stats" style="text-align:center; margin-top:5px;">
-    High Score: <span id="high-score">0</span> | High Lines: <span id="high-lines">0</span>
+    <div id="board" aria-label="tetris board"></div>
+
+    <div id="stats">
+      Score: <span id="score">0</span> | Lines: <span id="lines">0</span>
+      <div id="high-stats">
+        High Score: <span id="high-score">0</span> | High Lines: <span id="high-lines">0</span>
+      </div>
+      <div id="gameoverText" class="game-over" style="display:none;">GAME OVER — Press R to Restart</div>
     </div>
-</div>
 </div>
 
 <script>
+// CONFIG
+const COLS = 10;
+const ROWS = 20;
+const CELL_PX = 30; // used for visual cell size (CSS already set)
+
+// DOM
+const boardElem = document.getElementById('board');
+const scoreEl = document.getElementById('score');
+const linesEl = document.getElementById('lines');
+const highScoreEl = document.getElementById('high-score');
+const highLinesEl = document.getElementById('high-lines');
+const gameoverText = document.getElementById('gameoverText');
+
+// STATE
 let board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
-
-
-let highScore = parseInt(localStorage.getItem("highScore")) || 0;
-let highLines = parseInt(localStorage.getItem("highLines")) || 0;
-
-// Display them initially
-document.getElementById("high-score").textContent = highScore;
-document.getElementById("high-lines").textContent = highLines;
-
+let current = null;
 let gameOver = false;
 let score = 0;
 let linesCleared = 0;
-// ---------------------
+
+// Load highs
+let highScore = parseInt(localStorage.getItem("highScore")) || 0;
+let highLines = parseInt(localStorage.getItem("highLines")) || 0;
+highScoreEl.textContent = highScore;
+highLinesEl.textContent = highLines;
+
 // Prevent arrow scrolling
-// ---------------------
 window.addEventListener("keydown", function(e) {
-    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.code)) {
+    if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space"," "].includes(e.code || e.key)) {
         e.preventDefault();
     }
 }, { passive: false });
 
-
-// ---------------------
-// Board Setup
-// ---------------------
-const COLS = 10;
-const ROWS = 20;
-
-const boardElem = document.getElementById("board");
-
-let board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
-
-function createBoardHTML() {
-    boardElem.innerHTML = "";
-    for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-            const cell = document.createElement("div");
-            cell.className = "cell";
-            if (board[r][c] !== 0) {
-                cell.style.background = board[r][c];
-            } else {
-                cell.style.background = "#FFFFFF";
-            }
-            boardElem.appendChild(cell);
-        }
-    }
-}
-
-// ---------------------
-// Generate 900+ pieces
-// ---------------------
-function generateCrazyPiece() {
-    const sizes = [
-        [2, 2], [2, 3], [3, 2], [3, 3]
-    ];
+// -----------------------------
+// Piece generator (compact random walk, 4-way connectivity)
+// -----------------------------
+function generatePiece() {
+    const sizes = [[2,2],[2,3],[3,2],[3,3]];
     const [h, w] = sizes[Math.floor(Math.random() * sizes.length)];
 
-    // Max number of blocks = random between 2 and total cells
+    // desired blocks: at least 2, up to h*w
     const maxBlocks = h * w;
     const blockCount = Math.floor(Math.random() * (maxBlocks - 1)) + 2;
 
-    // Initialize empty grid
-    let shape = Array.from({ length: h }, () => Array(w).fill(0));
+    // empty grid
+    const shape = Array.from({ length: h }, () => Array(w).fill(0));
 
-    // Start position
+    // start at random cell
     let r = Math.floor(Math.random() * h);
     let c = Math.floor(Math.random() * w);
     shape[r][c] = 1;
 
-    // List of frontier cells (for linear growth)
-    let frontier = [[r, c]];
+    // frontier is a stack so growth stays compact (thin)
+    const frontier = [[r,c]];
 
-    while (frontier.length > 0 && shape.flat().reduce((a,b)=>a+b,0) < blockCount) {
-        // Take the last cell to ensure compact growth
+    while (shape.flat().reduce((a,b)=>a+b,0) < blockCount && frontier.length) {
         const [cr, cc] = frontier.pop();
-
-        // Shuffle directions
         const dirs = [[1,0],[-1,0],[0,1],[0,-1]].sort(()=>Math.random()-0.5);
-
         for (const [dr, dc] of dirs) {
             const nr = cr + dr;
             const nc = cc + dc;
-
-            if (nr >= 0 && nr < h && nc >=0 && nc < w && shape[nr][nc] === 0) {
+            if (nr >=0 && nr < h && nc >=0 && nc < w && shape[nr][nc] === 0) {
                 shape[nr][nc] = 1;
                 frontier.push([nr,nc]);
-                break; // only one step at a time → keeps shape thin
+                break; // only one step from this cell -> keeps shape thin
             }
         }
     }
 
-    const colors = ["#FF0000", "#00AAFF", "#00CC00", "#FF00FF", "#FFA500", "#7700FF", "#009999"];
-    return {
-        shape,
-        color: colors[Math.floor(Math.random() * colors.length)]
-    };
+    const colors = ["#FF0000","#00AAFF","#00CC00","#FF00FF","#FFA500","#7700FF","#009999"];
+    return { shape, color: colors[Math.floor(Math.random()*colors.length)] };
 }
-// ---------------------
-// Piece movement logic
-// ---------------------
-let current = spawnPiece();
 
-if (!canMove(newPiece, 0, 0)) {
-    gameOver = true;
-    
-    // Update high score if needed
-    if (score > highScore) {
-        highScore = score;
-        localStorage.setItem("highScore", highScore);
+// rotate matrix 90deg clockwise
+function rotateShape(shape) {
+    const h = shape.length, w = shape[0].length;
+    const out = Array.from({ length: w }, () => Array(h).fill(0));
+    for (let y=0;y<h;y++){
+        for (let x=0;x<w;x++){
+            out[x][h-1-y] = shape[y][x];
+        }
     }
-    
-    // Update high lines if needed
-    if (linesCleared > highLines) {
-        highLines = linesCleared;
-        localStorage.setItem("highLines", highLines);
-    }
-
-    // Update HTML
-    document.getElementById("high-score").textContent = highScore;
-    document.getElementById("high-lines").textContent = highLines;
-
-    alert("GAME OVER!");
-    return null;
+    return out;
 }
 
-function rotate(piece) {
-    const s = piece.shape;
-    const rotated = s[0].map((_, c) => s.map(row => row[c]).reverse());
-    return rotated;
-}
-
-function canMove(piece, dr, dc, newShape = null) {
-    const shape = newShape || piece.shape;
-    for (let r = 0; r < shape.length; r++) {
-        for (let c = 0; c < shape[0].length; c++) {
+// -----------------------------
+// Collision and placement
+// -----------------------------
+function canPlace(piece, rr, cc, shapeOverride = null) {
+    const shape = shapeOverride || piece.shape;
+    for (let r=0;r<shape.length;r++){
+        for (let c=0;c<shape[0].length;c++){
             if (shape[r][c] === 1) {
-                let nr = piece.r + r + dr;
-                let nc = piece.c + c + dc;
-
-                if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) return false;
-                if (board[nr][nc] !== 0) return false;
+                const br = rr + r;
+                const bc = cc + c;
+                // out of horizontal bounds or below bottom = cannot
+                if (bc < 0 || bc >= COLS) return false;
+                if (br >= ROWS) return false;
+                // if within visible board and collides with filled cell
+                if (br >= 0 && board[br][bc]) return false;
             }
         }
     }
@@ -242,116 +199,203 @@ function canMove(piece, dr, dc, newShape = null) {
 
 function mergePiece(piece) {
     let landedBlocks = 0;
-    for (let r = 0; r < piece.shape.length; r++) {
-        for (let c = 0; c < piece.shape[0].length; c++) {
+    for (let r=0;r<piece.shape.length;r++){
+        for (let c=0;c<piece.shape[0].length;c++){
             if (piece.shape[r][c] === 1) {
                 const br = piece.r + r;
                 const bc = piece.c + c;
-                if (br >= 0 && br < ROWS && bc >= 0 && bc < COLS) {
+                if (br >= 0 && br < ROWS && bc >=0 && bc < COLS) {
                     board[br][bc] = piece.color;
                     landedBlocks++;
                 }
             }
         }
     }
-
-    // Add points for landing a piece
-    score += landedBlocks;
+    score += landedBlocks; // points for blocks landed
+    updateStats();
 }
 
 function clearLines() {
     let cleared = 0;
-    board = board.filter(row => {
-        if (row.every(cell => cell !== 0)) {
+    for (let y = ROWS-1; y >= 0; y--) {
+        if (board[y].every(cell => cell !== 0)) {
             cleared++;
-            return false; // remove full line
+            board.splice(y, 1);
+            board.unshift(new Array(COLS).fill(0));
+            y++; // recheck same index after shift
         }
-        return true;
-    });
-
-    // Add empty rows on top
-    while (board.length < ROWS) {
-        board.unshift(Array(COLS).fill(0));
     }
-
     if (cleared > 0) {
         linesCleared += cleared;
-
-        // Extra points per cleared line
-        score += cleared * 10; // for example, 10 points per line
+        // line clear bonus (adjustable)
+        const pointsForLines = {1:40, 2:100, 3:300, 4:1200};
+        score += (pointsForLines[cleared] || (cleared * 100));
+        updateStats();
     }
-
-    // Update HTML stats
-    document.getElementById('score').textContent = score;
-    document.getElementById('lines').textContent = linesCleared;
 }
 
-function gameLoop() {
-    if (gameOver) return;
+function updateStats() {
+    scoreEl.textContent = score;
+    linesEl.textContent = linesCleared;
+}
 
-    if (canMove(current, 1, 0)) {
+// -----------------------------
+// Spawning & game-over
+// -----------------------------
+function spawnPiece() {
+    const p = generatePiece();
+    // position horizontally centered
+    p.c = Math.floor((COLS - p.shape[0].length) / 2);
+    // position above the visible area so taller shapes can enter
+    p.r = -p.shape.length;
+
+    // If it can't be placed at spawn (overlaps existing visible blocks) -> game over
+    if (!canPlace(p, p.r, p.c)) {
+        onGameOver();
+        return null;
+    }
+    return p;
+}
+
+function onGameOver(){
+    gameOver = true;
+    gameoverText.style.display = 'block';
+    // update highs
+    if (score > highScore) {
+        highScore = score;
+        localStorage.setItem("highScore", highScore);
+        highScoreEl.textContent = highScore;
+    }
+    if (linesCleared > highLines) {
+        highLines = linesCleared;
+        localStorage.setItem("highLines", highLines);
+        highLinesEl.textContent = highLines;
+    }
+}
+
+// -----------------------------
+// Controls
+// -----------------------------
+document.addEventListener('keydown', (e) => {
+    if (gameOver) {
+        if (e.key.toLowerCase() === 'r') restartGame();
+        return;
+    }
+    if (!current) return;
+    if (e.code === "ArrowLeft" && canPlace(current, current.r, current.c - 1)) {
+        current.c--;
+    } else if (e.code === "ArrowRight" && canPlace(current, current.r, current.c + 1)) {
+        current.c++;
+    } else if (e.code === "ArrowDown" && canPlace(current, current.r + 1, current.c)) {
         current.r++;
-    } else {
-        mergePiece(current);   // adds points for landed piece
-        clearLines();          // adds points for cleared lines
-        current = spawnPiece();
-        if (!current) return; // game over
+    } else if (e.code === "ArrowUp") {
+        const rotated = rotateShape(current.shape);
+        // try simple wallkick offsets: 0, -1, +1
+        const offsets = [0, -1, 1];
+        for (const off of offsets) {
+            if (canPlace(current, current.r, current.c + off, rotated)) {
+                current.shape = rotated;
+                current.c += off;
+                break;
+            }
+        }
     }
     draw();
+});
+
+// Hard drop with space
+document.addEventListener('keydown', (e) => {
+    if (gameOver) return;
+    if (e.code === "Space" || e.key === " ") {
+        // drop until cannot
+        while (current && canPlace(current, current.r + 1, current.c)) {
+            current.r++;
+        }
+        // then lock
+        if (current) {
+            mergePiece(current);
+            clearLines();
+            current = spawnPiece();
+        }
+        draw();
+    }
+});
+
+// -----------------------------
+// Game loop (simple interval)
+// -----------------------------
+let gravityMs = 500;
+let gravityTimer = null;
+
+function startLoop() {
+    if (gravityTimer) clearInterval(gravityTimer);
+    gravityTimer = setInterval(() => {
+        if (gameOver || !current) return;
+        if (canPlace(current, current.r + 1, current.c)) {
+            current.r++;
+        } else {
+            mergePiece(current);
+            clearLines();
+            current = spawnPiece();
+        }
+        draw();
+    }, gravityMs);
 }
 
+// -----------------------------
+// Drawing
+// -----------------------------
 function draw() {
-    boardElem.innerHTML = ""; // clear everything first
-
-    // Temporary board to include the falling piece
-    let tempBoard = board.map(row => [...row]); // deep copy
-
-    // Draw current piece into tempBoard
+    // clear container and redraw cells
+    boardElem.innerHTML = '';
+    // temp board includes falling piece
+    const temp = board.map(r => r.slice());
     if (current && current.shape) {
-        for (let r = 0; r < current.shape.length; r++) {
-            for (let c = 0; c < current.shape[0].length; c++) {
+        for (let r=0;r<current.shape.length;r++){
+            for (let c=0;c<current.shape[0].length;c++){
                 if (current.shape[r][c] === 1) {
                     const br = current.r + r;
                     const bc = current.c + c;
                     if (br >= 0 && br < ROWS && bc >= 0 && bc < COLS) {
-                        tempBoard[br][bc] = current.color;
+                        temp[br][bc] = current.color;
                     }
                 }
             }
         }
     }
 
-    // Render the cells
-    for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-            const cell = document.createElement("div");
-            cell.className = "cell";
-            cell.style.background = tempBoard[r][c] === 0 ? "#FFFFFF" : tempBoard[r][c];
+    for (let r=0;r<ROWS;r++){
+        for (let c=0;c<COLS;c++){
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.style.background = temp[r][c] === 0 ? '#FFFFFF' : temp[r][c];
             boardElem.appendChild(cell);
         }
     }
 }
-// ---------------------
-// Controls
-// ---------------------
-document.addEventListener("keydown", e => {
-    if (e.code === "ArrowLeft" && canMove(current, 0, -1)) current.c--;
-    if (e.code === "ArrowRight" && canMove(current, 0, 1)) current.c++;
-    if (e.code === "ArrowDown" && canMove(current, 1, 0)) current.r++;
-    if (e.code === "ArrowUp") {
-        const rotated = rotate(current);
-        if (canMove(current, 0, 0, rotated)) current.shape = rotated;
-    }
-    draw();
-});
 
-setInterval(gameLoop, 500);
-createBoardHTML();
+// -----------------------------
+// Restart
+// -----------------------------
+function restartGame() {
+    board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+    current = null;
+    gameOver = false;
+    score = 0;
+    linesCleared = 0;
+    updateStats();
+    gameoverText.style.display = 'none';
+    current = spawnPiece();
+    draw();
+}
+
+// -----------------------------
+// Init
+// -----------------------------
 current = spawnPiece();
 draw();
+startLoop();
+
 </script>
 </body>
 </html>
-
-
-
